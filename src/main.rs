@@ -184,6 +184,7 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         (args.size * source.aspect()).round().max(1.0) as u32,
     );
 
+    let hypr = Hyprland::from_env()?;
     let conn = Connection::connect_to_env()?;
     let (globals, mut event_queue) = registry_queue_init::<App>(&conn)?;
     let qh = event_queue.handle();
@@ -207,8 +208,7 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     event_queue.roundtrip(&mut app)?;
     event_queue.roundtrip(&mut app)?;
 
-    let hypr = Hyprland::from_env();
-    let wanted = hypr.as_ref().and_then(Hyprland::focused_monitor);
+    let wanted = hypr.focused_monitor();
     let outputs: Vec<(wl_output::WlOutput, OutputInfo)> = app
         .output_state
         .outputs()

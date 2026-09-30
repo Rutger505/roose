@@ -39,7 +39,7 @@ struct Pending {
 }
 
 pub struct HyprDesktop {
-    hypr: Option<Hyprland>,
+    hypr: Hyprland,
     origin: Vec2,
     commands: Commands,
     cache: PathBuf,
@@ -50,12 +50,7 @@ pub struct HyprDesktop {
 }
 
 impl HyprDesktop {
-    pub fn new(
-        hypr: Option<Hyprland>,
-        origin: Vec2,
-        commands: Commands,
-        rng: fastrand::Rng,
-    ) -> Self {
+    pub fn new(hypr: Hyprland, origin: Vec2, commands: Commands, rng: fastrand::Rng) -> Self {
         let cache = env::var_os("XDG_CACHE_HOME")
             .map(PathBuf::from)
             .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
@@ -141,19 +136,16 @@ impl HyprDesktop {
 
 impl Desktop for HyprDesktop {
     fn cursor(&mut self) -> Option<Vec2> {
-        Some(self.hypr.as_ref()?.cursor()? - self.origin)
+        Some(self.hypr.cursor()? - self.origin)
     }
 
     fn warp_cursor(&mut self, to: Vec2) {
         let (x, y) = self.global(to);
-        if let Some(hypr) = &self.hypr {
-            hypr.dispatch(&[format!("movecursor {x} {y}")]);
-        }
+        self.hypr.dispatch(&[format!("movecursor {x} {y}")]);
     }
 
     fn spawn(&mut self, prop: Prop) -> bool {
-        let Some(hypr) = &self.hypr else { return false };
-        let known = hypr.clients().into_iter().map(|c| c.address).collect();
+        let known = self.hypr.clients().into_iter().map(|c| c.address).collect();
         if fs::create_dir_all(&self.cache).is_err() {
             return false;
         }
@@ -177,18 +169,17 @@ impl Desktop for HyprDesktop {
     }
 
     fn take_spawned_window(&mut self, prop: Prop, top_left: Vec2) -> Option<Window> {
-        let hypr = self.hypr.as_ref()?;
         let pending = self.pending.as_ref()?;
-        let client = hypr
-            .clients()
-            .into_iter()
-            .find(|c| !pending.known.contains(&c.address) && c.title.contains(&pending.needle))?;
+        let client =
+            self.hypr.clients().into_iter().find(|c| {
+                !pending.known.contains(&c.address) && c.title.contains(&pending.needle)
+            })?;
         self.pending = None;
 
         let size = prop.size();
         let (x, y) = self.global(top_left);
         let target = format!("address:{}", client.address);
-        hypr.dispatch(&[
+        self.hypr.dispatch(&[
             format!("setfloating {target}"),
             format!(
                 "resizewindowpixel exact {} {},{target}",
@@ -204,12 +195,10 @@ impl Desktop for HyprDesktop {
 
     fn move_window(&mut self, window: &Window, top_left: Vec2) {
         let (x, y) = self.global(top_left);
-        if let Some(hypr) = &self.hypr {
-            hypr.dispatch(&[format!(
-                "movewindowpixel exact {x} {y},address:{}",
-                window.id
-            )]);
-        }
+        self.hypr.dispatch(&[format!(
+            "movewindowpixel exact {x} {y},address:{}",
+            window.id
+        )]);
     }
 }
 

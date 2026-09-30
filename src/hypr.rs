@@ -33,14 +33,21 @@ struct CursorPos {
 }
 
 impl Hyprland {
-    pub fn from_env() -> Option<Self> {
-        let signature = env::var("HYPRLAND_INSTANCE_SIGNATURE").ok()?;
+    pub fn from_env() -> Result<Self, String> {
+        let signature = env::var("HYPRLAND_INSTANCE_SIGNATURE")
+            .map_err(|_| "roose only runs on Hyprland (HYPRLAND_INSTANCE_SIGNATURE is not set)")?;
         let runtime_dir = env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
         let socket = PathBuf::from(runtime_dir)
             .join("hypr")
             .join(signature)
             .join(".socket.sock");
-        socket.exists().then_some(Self { socket })
+        if !socket.exists() {
+            return Err(format!(
+                "Hyprland socket {} does not exist",
+                socket.display()
+            ));
+        }
+        Ok(Self { socket })
     }
 
     fn request(&self, command: &str) -> io::Result<String> {
