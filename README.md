@@ -16,7 +16,7 @@ The goose:
 cargo install --force --git https://github.com/Rutger505/roose
 ```
 
-Runtime dependencies: Hyprland, `code` (VSCode) and `imv`. roose refuses to start outside Hyprland. Any other editor or viewer works through `--editor` and `--viewer`.
+Runtime dependencies: Hyprland, `gedit` and `imv`. roose refuses to start outside Hyprland. Any other editor or viewer works through `--editor` and `--viewer`.
 
 ## Usage
 
@@ -35,7 +35,7 @@ Put images in `~/Pictures/roose` (or pass `--memes <dir>`) and the goose will br
 --cooldown <s>     minimum seconds between fetched windows [default: 45]
 --sprite <png>     use your own goose image (should face right)
 --memes <dir>      folder with images to drag in [default: ~/Pictures/roose]
---editor <cmd>     command for notes [default: "code --new-window --ozone-platform=wayland"]
+--editor <cmd>     command for notes [default: "gedit --new-window"]
 --viewer <cmd>     command for memes [default: imv]
 --no-steal         never steal the cursor
 --no-notes         never drag in notes

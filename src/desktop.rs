@@ -155,7 +155,23 @@ impl Desktop for HyprDesktop {
                 let name = format!("roose-spawned-{}-{}.txt", std::process::id(), self.spawned);
                 (self.write_note(&name), self.commands.editor.clone())
             }
-            Prop::Meme => (self.pick_meme(), self.commands.viewer.clone()),
+            Prop::Meme => {
+                let source = self.pick_meme();
+                let marked = source.as_deref().and_then(|path| {
+                    let ext = path.extension()?.to_string_lossy();
+                    let name = format!(
+                        "roose-spawned-{}-{}.{}",
+                        std::process::id(),
+                        self.spawned,
+                        ext
+                    );
+                    let target = self.cache.join(name);
+                    std::os::unix::fs::symlink(path, &target)
+                        .ok()
+                        .map(|_| target)
+                });
+                (marked, self.commands.viewer.clone())
+            }
         };
         let Some(file) = file else { return false };
         let needle = file
