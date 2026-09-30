@@ -116,6 +116,15 @@ impl Goose {
         self.facing
     }
 
+    /// A click on the sprite immediately starts the cursor-chase prank.
+    pub fn chase_cursor(&mut self) {
+        if self.settings.steal_cursor {
+            self.state = State::Chase {
+                give_up_at: self.clock + 7.0,
+            };
+        }
+    }
+
     /// Top-left of the sprite including the waddle bob.
     pub fn draw_position(&self) -> Vec2 {
         let bob = if self.is_walking() {

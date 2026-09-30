@@ -8,7 +8,7 @@ The goose:
 - chases your cursor, grabs it in its beak and runs away with it
 - drags in a VSCode window from the edge of the screen with a funny quote in it
 - drags in memes shown with [imv](https://sr.ht/~exec64/imv/)
-- is click-through, so it never blocks your clicks
+- is click-through except on the goose itself: left-click it to make it chase and steal your cursor
 
 ## Install
 
@@ -42,7 +42,7 @@ Put images in `~/Pictures/roose` (or pass `--memes <dir>`) and the goose will br
 --no-memes         never drag in memes
 ```
 
-To start it with Hyprland, add `exec-once = roose` to `hyprland.conf`.
+To start it with Hyprland, add `exec-once = roose` to `hyprland.conf`. Info logs are written to stdout by default; set `RUST_LOG=debug` for debug messages.
 
 ## Why it's cheap to run many geese
 

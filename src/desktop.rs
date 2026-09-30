@@ -152,7 +152,7 @@ impl Desktop for HyprDesktop {
         self.spawned += 1;
         let (file, command) = match prop {
             Prop::Note => {
-                let name = format!("honk-{}-{}.txt", std::process::id(), self.spawned);
+                let name = format!("roose-spawned-{}-{}.txt", std::process::id(), self.spawned);
                 (self.write_note(&name), self.commands.editor.clone())
             }
             Prop::Meme => (self.pick_meme(), self.commands.viewer.clone()),

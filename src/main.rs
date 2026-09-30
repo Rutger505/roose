@@ -3,6 +3,7 @@ mod brain;
 mod desktop;
 mod geometry;
 mod hypr;
+mod logging;
 mod sprite;
 
 use std::time::{Duration, Instant};
@@ -25,6 +26,10 @@ use smithay_client_toolkit::{
     },
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
+    seat::{
+        Capability, SeatHandler, SeatState,
+        pointer::{PointerEvent, PointerEventKind, PointerHandler},
+    },
     shell::{
         WaylandSurface,
         wlr_layer::{
@@ -38,7 +43,7 @@ use smithay_client_toolkit::{
 use wayland_client::{
     Connection, QueueHandle,
     globals::registry_queue_init,
-    protocol::{wl_buffer, wl_output, wl_shm, wl_subsurface, wl_surface},
+    protocol::{wl_buffer, wl_output, wl_pointer, wl_seat, wl_shm, wl_subsurface, wl_surface},
 };
 
 use crate::{
@@ -120,6 +125,9 @@ struct Body {
 struct App {
     registry_state: RegistryState,
     output_state: OutputState,
+    seat_state: SeatState,
+    pointer: Option<wl_pointer::WlPointer>,
+    click_requested: bool,
     shm: Shm,
     source: Source,
     size: (u32, u32),
@@ -198,6 +206,7 @@ fn logical_geometry(info: &OutputInfo) -> (Vec2, Vec2) {
 }
 
 fn main() {
+    logging::init();
     let args = Args::parse().unwrap_or_else(|err| {
         eprintln!("roose: {err}");
         std::process::exit(2);
@@ -216,6 +225,7 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let hypr = Hyprland::from_env()?;
+    log::info!("Starting roose on Hyprland");
     let conn = Connection::connect_to_env()?;
     let (globals, mut event_queue) = registry_queue_init::<App>(&conn)?;
     let qh = event_queue.handle();
@@ -226,6 +236,9 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App {
         registry_state: RegistryState::new(&globals),
         output_state: OutputState::new(&globals, &qh),
+        seat_state: SeatState::new(&globals, &qh),
+        pointer: None,
+        click_requested: false,
         shm: Shm::bind(&globals, &qh)?,
         source,
         size,
@@ -251,6 +264,13 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         .or(outputs.first())
         .ok_or("no outputs found")?;
     let (origin, screen) = logical_geometry(info);
+    log::info!(
+        "Using output {:?} ({:.0}x{:.0}, scale {})",
+        info.name,
+        screen.x,
+        screen.y,
+        info.scale_factor
+    );
     app.scale = info.scale_factor.max(1);
 
     let layer = layer_shell.create_layer_surface(
@@ -282,7 +302,8 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let subcompositor =
         SubcompositorState::bind(compositor.wl_compositor().clone(), &globals, &qh)?;
     let (subsurface, surface) = subcompositor.create_subsurface(layer.wl_surface().clone(), &qh);
-    surface.set_input_region(Some(click_through.wl_region()));
+    // The sprite receives clicks; the full-monitor anchor remains click-through.
+    surface.set_input_region(None);
     app.body = Some(Body {
         layer,
         viewport,
@@ -300,6 +321,12 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     if args.meme_props {
         props.push(Prop::Meme);
     }
+    log::info!(
+        "Goose size {}x{}, cursor stealing {}",
+        size.0,
+        size.1,
+        args.steal
+    );
     let settings = Settings {
         size: Vec2::new(size.0 as f32, size.1 as f32),
         speed: args.speed,
@@ -327,6 +354,9 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             let now = Instant::now();
             let dt = now.duration_since(last).as_secs_f32();
             last = now;
+            if std::mem::take(&mut app.click_requested) {
+                goose.chase_cursor();
+            }
             let mut sleep = goose.tick(dt, &mut desktop);
             let position = goose.draw_position();
             app.present(position, goose.facing());
@@ -416,6 +446,62 @@ impl LayerShellHandler for App {
     }
 }
 
+impl SeatHandler for App {
+    fn seat_state(&mut self) -> &mut SeatState {
+        &mut self.seat_state
+    }
+
+    fn new_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
+
+    fn new_capability(
+        &mut self,
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+        seat: wl_seat::WlSeat,
+        capability: Capability,
+    ) {
+        if capability == Capability::Pointer && self.pointer.is_none() {
+            self.pointer = self.seat_state.get_pointer(qh, &seat).ok();
+        }
+    }
+
+    fn remove_capability(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: wl_seat::WlSeat,
+        capability: Capability,
+    ) {
+        if capability == Capability::Pointer {
+            if let Some(pointer) = self.pointer.take() {
+                pointer.release();
+            }
+        }
+    }
+
+    fn remove_seat(&mut self, _: &Connection, _: &QueueHandle<Self>, _: wl_seat::WlSeat) {}
+}
+
+impl PointerHandler for App {
+    fn pointer_frame(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wl_pointer::WlPointer,
+        events: &[PointerEvent],
+    ) {
+        let Some(body) = &self.body else { return };
+        for event in events {
+            if event.surface == body.surface
+                && matches!(event.kind, PointerEventKind::Press { button: 0x110, .. })
+            {
+                self.click_requested = true;
+                log::info!("Clicked the goose; starting cursor chase");
+            }
+        }
+    }
+}
+
 impl ShmHandler for App {
     fn shm_state(&mut self) -> &mut Shm {
         &mut self.shm
@@ -426,7 +512,7 @@ impl ProvidesRegistryState for App {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
     }
-    registry_handlers![OutputState];
+    registry_handlers![OutputState, SeatState];
 }
 
 delegate_registry!(App);
