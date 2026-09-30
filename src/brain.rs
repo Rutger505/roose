@@ -234,6 +234,16 @@ impl Goose {
         Vec2::new(x, beak.y - window_size.y / 2.0)
     }
 
+    /// Starts the stolen window fully beyond the monitor edge; subsequent drag ticks pull it in.
+    fn window_spawn_origin(&self, window_size: Vec2, facing: Facing) -> Vec2 {
+        let attached = self.window_origin(window_size, facing);
+        let x = match facing {
+            Facing::Left => -window_size.x,
+            Facing::Right => self.screen.x,
+        };
+        Vec2::new(x, attached.y)
+    }
+
     /// Advances the goose by `dt` seconds and returns how long it may sleep before the next tick.
     pub fn tick(&mut self, dt: f32, desktop: &mut dyn Desktop) -> f32 {
         self.clock += dt;
@@ -315,7 +325,7 @@ impl Goose {
                 facing,
                 give_up_at,
             } => {
-                let origin = self.window_origin(prop.size(), facing);
+                let origin = self.window_spawn_origin(prop.size(), facing);
                 match desktop.take_spawned_window(prop, origin) {
                     Some(window) => {
                         self.next_prop_at = self.clock + self.settings.prop_cooldown;

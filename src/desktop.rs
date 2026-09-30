@@ -9,7 +9,7 @@ use std::{
 use crate::{
     brain::{Desktop, Prop, Window},
     geometry::Vec2,
-    hypr::Hyprland,
+    hypr::{Action, Hyprland},
 };
 
 const QUOTES: &[&str] = &[
@@ -141,7 +141,7 @@ impl Desktop for HyprDesktop {
 
     fn warp_cursor(&mut self, to: Vec2) {
         let (x, y) = self.global(to);
-        self.hypr.dispatch(&[format!("movecursor {x} {y}")]);
+        self.hypr.dispatch(&[Action::MoveCursor { x, y }]);
     }
 
     fn spawn(&mut self, prop: Prop) -> bool {
@@ -178,14 +178,15 @@ impl Desktop for HyprDesktop {
 
         let size = prop.size();
         let (x, y) = self.global(top_left);
-        let target = format!("address:{}", client.address);
+        let window = client.address.as_str();
         self.hypr.dispatch(&[
-            format!("setfloating {target}"),
-            format!(
-                "resizewindowpixel exact {} {},{target}",
-                size.x as i32, size.y as i32
-            ),
-            format!("movewindowpixel exact {x} {y},{target}"),
+            Action::Float { window },
+            Action::Resize {
+                window,
+                width: size.x as i32,
+                height: size.y as i32,
+            },
+            Action::Move { window, x, y },
         ]);
         Some(Window {
             id: client.address,
@@ -195,10 +196,11 @@ impl Desktop for HyprDesktop {
 
     fn move_window(&mut self, window: &Window, top_left: Vec2) {
         let (x, y) = self.global(top_left);
-        self.hypr.dispatch(&[format!(
-            "movewindowpixel exact {x} {y},address:{}",
-            window.id
-        )]);
+        self.hypr.dispatch(&[Action::Move {
+            window: &window.id,
+            x,
+            y,
+        }]);
     }
 }
 

@@ -20,7 +20,10 @@ done
 cpu_ticks() { awk '{ print $14 + $15 }' "/proc/$1/stat"; }
 start=()
 for pid in "${pids[@]}"; do start+=("$(cpu_ticks "$pid")"); done
+hyprland=$(pgrep -x Hyprland | head -1)
+hyprland_start=$(cpu_ticks "$hyprland")
 sleep "$seconds"
+hyprland_ticks=$(($(cpu_ticks "$hyprland") - hyprland_start))
 
 hz=$(getconf CLK_TCK)
 ticks=0
@@ -33,10 +36,11 @@ for i in "${!pids[@]}"; do
   pss=$((pss + $(awk '/^Pss:/ { print $2 }' "/proc/$pid/smaps_rollup")))
 done
 
-awk -v n="$count" -v s="$seconds" -v t="$ticks" -v hz="$hz" -v rss="$rss" -v pss="$pss" 'BEGIN {
+awk -v n="$count" -v s="$seconds" -v t="$ticks" -v hz="$hz" -v rss="$rss" -v pss="$pss" -v ht="$hyprland_ticks" 'BEGIN {
   cpu = 100 * t / hz / s
   printf "geese:           %d\n", n
   printf "total RSS:       %.1f MiB (%.1f MiB each)\n", rss / 1024, rss / 1024 / n
   printf "total PSS:       %.1f MiB (%.1f MiB each, shared libraries split fairly)\n", pss / 1024, pss / 1024 / n
   printf "total CPU:       %.2f%% of one core (%.3f%% each)\n", cpu, cpu / n
+  printf "Hyprland CPU:    %.2f%% of one core while they ran\n", 100 * ht / hz / s
 }'

@@ -7,6 +7,10 @@ mod sprite;
 
 use std::time::{Duration, Instant};
 
+use smithay_client_toolkit::reexports::protocols::wp::viewporter::client::{
+    wp_viewport::{self, WpViewport},
+    wp_viewporter::{self, WpViewporter},
+};
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState, Region},
     delegate_registry,
@@ -61,9 +65,9 @@ impl Drop for Sprites {
     }
 }
 
-struct SpriteBuffer;
+struct Ignore;
 
-impl Dispatch2<wl_buffer::WlBuffer, App> for SpriteBuffer {
+impl Dispatch2<wl_buffer::WlBuffer, App> for Ignore {
     fn event(
         &self,
         _: &mut App,
@@ -75,11 +79,38 @@ impl Dispatch2<wl_buffer::WlBuffer, App> for SpriteBuffer {
     }
 }
 
-/// Moving a layer surface (via margins) makes compositors re-arrange and reconfigure every layer
+impl Dispatch2<WpViewporter, App> for Ignore {
+    fn event(
+        &self,
+        _: &mut App,
+        _: &WpViewporter,
+        _: wp_viewporter::Event,
+        _: &Connection,
+        _: &QueueHandle<App>,
+    ) {
+    }
+}
+
+impl Dispatch2<WpViewport, App> for Ignore {
+    fn event(
+        &self,
+        _: &mut App,
+        _: &WpViewport,
+        _: wp_viewport::Event,
+        _: &Connection,
+        _: &QueueHandle<App>,
+    ) {
+    }
+}
+
+/// Moving a layer surface (via margins) makes Hyprland re-arrange and reconfigure every layer
 /// surface on the monitor, so N geese would cost O(N²) wakeups. Instead the layer surface is a
-/// static transparent 1x1 anchor and the goose is a subsurface that is moved with set_position.
+/// static, transparent, click-through anchor covering the monitor, and the goose is a subsurface
+/// moved with set_position. The anchor must cover the monitor because Hyprland crops layer
+/// subsurfaces to the layer's size; one transparent pixel stretched by the viewporter does that.
 struct Body {
     layer: LayerSurface,
+    viewport: WpViewport,
     anchor: wl_buffer::WlBuffer,
     _anchor_pool: RawPool,
     subsurface: wl_subsurface::WlSubsurface,
@@ -114,8 +145,8 @@ impl App {
         sprite::write_argb(&pixmap, true, &mut pool.mmap()[frame..]);
         let (w, h, stride) = (width as i32, height as i32, width as i32 * 4);
         let format = wl_shm::Format::Argb8888;
-        let right = pool.create_buffer(0, w, h, stride, format, SpriteBuffer, qh);
-        let left = pool.create_buffer(frame as i32, w, h, stride, format, SpriteBuffer, qh);
+        let right = pool.create_buffer(0, w, h, stride, format, Ignore, qh);
+        let left = pool.create_buffer(frame as i32, w, h, stride, format, Ignore, qh);
         self.sprites = Some(Sprites {
             right,
             left,
@@ -229,8 +260,8 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         Some("roose"),
         Some(output),
     );
-    layer.set_anchor(Anchor::TOP | Anchor::LEFT);
-    layer.set_size(1, 1);
+    layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+    layer.set_size(0, 0);
     layer.set_exclusive_zone(-1);
     layer.set_keyboard_interactivity(KeyboardInteractivity::None);
     let click_through = Region::new(&compositor)?;
@@ -241,7 +272,12 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut anchor_pool = RawPool::new(4, &app.shm)?;
     anchor_pool.mmap().fill(0);
-    let anchor = anchor_pool.create_buffer(0, 1, 1, 4, wl_shm::Format::Argb8888, SpriteBuffer, &qh);
+    let anchor = anchor_pool.create_buffer(0, 1, 1, 4, wl_shm::Format::Argb8888, Ignore, &qh);
+
+    let viewporter: WpViewporter = globals
+        .bind(&qh, 1..=1, Ignore)
+        .map_err(|_| "compositor has no wp_viewporter")?;
+    let viewport = viewporter.get_viewport(layer.wl_surface(), &qh, Ignore);
 
     let subcompositor =
         SubcompositorState::bind(compositor.wl_compositor().clone(), &globals, &qh)?;
@@ -249,6 +285,7 @@ fn run(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     surface.set_input_region(Some(click_through.wl_region()));
     app.body = Some(Body {
         layer,
+        viewport,
         anchor,
         _anchor_pool: anchor_pool,
         subsurface,
@@ -364,13 +401,17 @@ impl LayerShellHandler for App {
         _: &Connection,
         _: &QueueHandle<Self>,
         _: &LayerSurface,
-        _: LayerSurfaceConfigure,
+        configure: LayerSurfaceConfigure,
         _: u32,
     ) {
-        if let (Some(body), false) = (&self.body, self.configured) {
-            body.layer.wl_surface().attach(Some(&body.anchor), 0, 0);
-            body.layer.commit();
+        let Some(body) = &self.body else { return };
+        let (width, height) = configure.new_size;
+        if width > 0 && height > 0 {
+            body.viewport.set_destination(width as i32, height as i32);
         }
+        body.layer.wl_surface().attach(Some(&body.anchor), 0, 0);
+        body.layer.wl_surface().damage_buffer(0, 0, 1, 1);
+        body.layer.commit();
         self.configured = true;
     }
 }
