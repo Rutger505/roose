@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Usage: scripts/bench.sh [instances] [seconds]
-# Runs N geese on the current Wayland session and reports their combined RAM and CPU usage.
-# Set HEADLESS=1 to spin up a throwaway headless sway instead (needs sway + pixman renderer).
+# Runs N geese on the current Hyprland session and reports their combined RAM and CPU usage.
 set -eu
 count=${1:-10}
 seconds=${2:-30}
@@ -9,23 +8,8 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 bin=$root/target/release/roose
 cargo build --release --quiet --manifest-path "$root/Cargo.toml"
 
-cleanup() { kill "${pids[@]}" ${sway_pid:-} 2>/dev/null || true; }
+cleanup() { kill "${pids[@]}" 2>/dev/null || true; }
 trap cleanup EXIT
-
-if [ "${HEADLESS:-0}" = 1 ]; then
-  unset HYPRLAND_INSTANCE_SIGNATURE
-  before=$(ls "$XDG_RUNTIME_DIR" | grep -E '^wayland-[0-9]+$' || true)
-  printf 'output HEADLESS-1 resolution 1920x1080\n' >"$root/target/bench-sway.conf"
-  WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 \
-    sway -c "$root/target/bench-sway.conf" >/dev/null 2>&1 &
-  sway_pid=$!
-  for _ in $(seq 50); do
-    socket=$(ls "$XDG_RUNTIME_DIR" | grep -E '^wayland-[0-9]+$' | grep -vxF "$before" | tail -1 || true)
-    [ -n "$socket" ] && break
-    sleep 0.1
-  done
-  export WAYLAND_DISPLAY=$socket
-fi
 
 pids=()
 for _ in $(seq "$count"); do

@@ -1,6 +1,6 @@
 # roose 🪿
 
-A desktop goose for Wayland, written in Rust. Built for Hyprland. It is **r**ust + g**oose**.
+A desktop goose for Hyprland, written in Rust. It is **r**ust + g**oose**.
 
 The goose:
 
@@ -16,7 +16,7 @@ The goose:
 cargo install --git https://github.com/Rutger505/roose
 ```
 
-Runtime dependencies: Hyprland, `code` (VSCode) and `imv`. Any other editor or viewer works through `--editor` and `--viewer`.
+Runtime dependencies: Hyprland, `code` (VSCode) and `imv`. roose refuses to start outside Hyprland. Any other editor or viewer works through `--editor` and `--viewer`.
 
 ## Usage
 
@@ -44,23 +44,21 @@ Put images in `~/Pictures/roose` (or pass `--memes <dir>`) and the goose will br
 
 To start it with Hyprland, add `exec-once = roose` to `hyprland.conf`.
 
-On compositors other than Hyprland (sway, river, ...) the goose still walks around, but it can't touch your cursor or windows. That needs Hyprland's IPC.
-
 ## Why it's cheap to run many geese
 
 Each goose is its own small process, and it's built so that running many of them stays cheap:
 
 - **Rendered once.** The sprite is drawn once per output scale into shared memory, one copy per facing direction. Walking never redraws: each frame is just `wl_subsurface.set_position` plus a commit.
-- **No re-arrange storm.** The obvious way to move a layer-shell surface is to change its margins. That makes the compositor re-arrange *every* layer surface on the monitor and send each one a `configure`. With N geese that is O(N²) wakeups: in testing, one goose received 570 configures for its own 40 commits. roose keeps its layer surface as a static, transparent 1×1 anchor and moves the goose as a subsurface instead, so it gets 2 configures in total.
+- **No re-arrange storm.** The obvious way to move a layer-shell surface is to change its margins. That makes Hyprland (like other layer-shell compositors) re-arrange *every* layer surface on the monitor and send each one a `configure`. With N geese that is O(N²) wakeups: in testing, one goose received 570 configures for its own 40 commits. roose keeps its layer surface as a static, transparent 1×1 anchor and moves the goose as a subsurface instead, so it gets 2 configures in total.
 - **Sleeps when idle.** The main loop is timer-driven. A standing goose sleeps until its next move, with no frame loop.
 - **Talks to Hyprland directly.** It writes to Hyprland's IPC socket instead of spawning `hyprctl` for every cursor or window move.
 - **Small.** No GPU context and no toolkit, just `wl_shm` and `tiny-skia`, with an LTO'd, stripped release binary.
 
 ### Benchmark
 
-`scripts/bench.sh [instances] [seconds]` starts N geese on your current session and reports their combined memory and CPU. `HEADLESS=1` runs them in a throwaway headless sway instead.
+`scripts/bench.sh [instances] [seconds]` starts N geese on your current Hyprland session and reports their combined memory and CPU.
 
-Headless sway, 4-core VM, 30s per run, geese wandering (release build):
+First numbers, measured on a 4-core VM during development in a headless wlroots session. Rerun it on your own Hyprland machine for real numbers:
 
 - 1 goose: 1.5 MiB PSS, 0.10% of one core
 - 10 geese: 4.8 MiB PSS in total (0.5 MiB each), 1.10% of one core
@@ -73,7 +71,7 @@ CPU grows linearly, about 0.1% per goose. Memory per goose *drops* as you add mo
 ```sh
 cargo test
 cargo clippy --all-targets
-HEADLESS=1 scripts/bench.sh 10 30
+scripts/bench.sh 10 30
 ```
 
 - `src/brain.rs`: the goose's behaviour state machine. It's pure logic and unit-tested against a fake desktop.
