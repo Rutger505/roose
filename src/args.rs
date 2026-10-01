@@ -12,7 +12,7 @@ OPTIONS:
   --cooldown <s>     minimum seconds between fetched windows [default: 45]
   --sprite <png>     use your own goose image (should face right)
   --memes <dir>      folder with images to drag in [default: ~/Pictures/roose]
-  --editor <cmd>     command for notes [default: \"code --new-window --ozone-platform=wayland\"]
+  --editor <cmd>     command for notes [default: \"gedit --new-window\"]
   --viewer <cmd>     command for memes [default: imv]
   --no-steal         never steal the cursor
   --no-notes         never drag in notes
@@ -43,7 +43,7 @@ impl Args {
             cooldown: 45.0,
             sprite: None,
             memes: env::var_os("HOME").map(|h| PathBuf::from(h).join("Pictures/roose")),
-            editor: words("code --new-window --ozone-platform=wayland"),
+            editor: words("gedit --new-window"),
             viewer: words("imv"),
             steal: true,
             notes: true,
